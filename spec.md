@@ -24,21 +24,35 @@ Following Claude Code best practices, all components will be developed using TDD
 
 **Primary Tool**: `madison_county_doc_puller/doc_puller.py`
 - Selenium-based web scraper supporting three portals:
-  - **Historical Portal**: Books < 237 via dropdown interface
-  - **MID Portal**: Books 237-3971 via direct URL construction  
+  - **Historical Portal**: Books < 238 via dropdown interface (includes Book 237)
+  - **MID Portal**: Books 238-3971 via direct URL construction  
   - **DuProcess Portal**: Books 3972+ (excluded from Phase 1)
+- **Error Recovery**: Implement retry mechanism with exponential backoff for failed downloads
+- **Storage Pipeline**:
+  1. Download PDF to temporary local directory
+  2. Optimize PDF (compress, standardize resolution)
+  3. Upload optimized PDF to GCS at `documents/optimized-pdfs/{doc_type}/book-{book}/{book}-{page}.pdf`
+  4. Delete temporary local files
+  5. Log successful upload with checksum
 
 **Index Processing**:
 - Process all Excel files in `madison_docs/DuProcess Indexes/` (1985-2014+)
 - Extract Book/Page combinations for systematic downloading
-- Generate consolidated download queue with portal routing
+- Parse InstrumentType field using regex to extract document type before " -"
+- Implement fuzzy matching for truncated document types:
+  - "ASSIGNMENT OF DEED O" → "ASSIGNMENT OF DEED OF TRUST"
+  - "AMENDED PROTECTIVE C" → "AMENDED PROTECTIVE COVENANT"
+  - Use Levenshtein distance or similar algorithm
+- Map document types to standardized codes from doc_type_lookup dictionary
+- Generate consolidated download queue with portal routing and document type
 
-**New Web Scrapers Required**:
+**New Web Scrapers Required** (Priority Order):
 
-1. **Historical Wills Scraper**
+1. **Historical Wills Scraper** (PRIORITY 1)
    - Target: `https://tools.madison-co.net/elected-offices/chancery-clerk/drupal-search-historical-books/`
    - Pattern: `?file=MAD-WILL-A-0001.pdf&method=browse&type=will`
    - Extract will book/page combinations from `madison_docs/Wills - Historic.xlsx`
+   - Implement retry mechanism for download failures
 
 2. **Will Index Scraper (1992-2009)**
    - Target: `https://www.madison-co.com/search-will-index-1992-present`
@@ -65,26 +79,43 @@ Following Claude Code best practices, all components will be developed using TDD
 **Google Cloud Storage Structure**:
 ```
 madison-county-title-plant/
-├── raw-documents/
-│   ├── deeds/
-│   │   ├── book-001/
-│   │   └── book-xxx/
-│   ├── deeds-of-trust/
-│   ├── wills/
-│   └── chancery/
-├── processed-documents/
+├── documents/
 │   ├── optimized-pdfs/
+│   │   ├── deeds/
+│   │   │   ├── book-001/
+│   │   │   │   ├── 001-0001.pdf
+│   │   │   │   └── 001-0002.pdf
+│   │   │   └── book-xxx/
+│   │   ├── deeds-of-trust/
+│   │   │   └── book-xxx/
+│   │   ├── wills/
+│   │   │   └── book-xxx/
+│   │   └── chancery/
+│   │       └── case-xxx/
 │   └── extracted-text/
+│       ├── deeds/
+│       │   ├── book-001/
+│       │   │   ├── 001-0001.json
+│       │   │   └── 001-0002.json
+│       │   └── book-xxx/
+│       ├── deeds-of-trust/
+│       │   └── book-xxx/
+│       ├── wills/
+│       │   └── book-xxx/
+│       └── chancery/
+│           └── case-xxx/
 └── indexes/
     ├── master-index/
     └── search-indexes/
 ```
 
-**PDF Optimization**:
-- Compress images to reduce file sizes
-- Standardize resolution for consistent OCR performance
-- Maintain original document integrity
-- Generate checksums for data validation
+**PDF Optimization Pipeline**:
+- Download document to temporary local storage
+- Optimize PDF (compress images, standardize resolution)
+- Upload optimized version to GCS
+- Delete local temporary files (both raw and optimized)
+- Generate and store checksums for data validation
+- Maintain consistent naming: `{book}-{page}.pdf` and `{book}-{page}.json`
 
 ### Phase 2: Text Extraction & Processing
 
@@ -92,9 +123,15 @@ madison-county-title-plant/
 
 **Google Document AI Integration**:
 - Utilize existing `doc_reader/document_reader.py` framework
+- **Phase 1**: Extract raw text using Google Document AI only
+- **Phase 2**: Apply AI services (OpenAI/Gemini/Claude) for OCR error correction if needed
 - Batch process documents by type for optimal API usage
 - Implement retry logic for failed extractions
-- Store raw OCR output alongside structured data
+- **Storage Format**: Save extracted text as JSON with metadata:
+  - Store at `documents/extracted-text/{doc_type}/book-{book}/{book}-{page}.json`
+  - Match PDF filename structure for easy correlation
+  - Include OCR confidence scores and processing metadata
+- Prioritize raw text extraction over AI processing for cost efficiency
 
 **Text Processing Pipeline**:
 1. **Document Classification**
@@ -226,6 +263,27 @@ GET /api/property/{legal-description}
 - Automated testing pipeline with CI/CD integration
 - Staging environment mirroring production architecture
 - Claude Code integration for development assistance
+
+#### Environment Configuration
+- Use `.env` file for all API keys and sensitive configuration
+- Never commit API keys to version control
+- Environment variables structure:
+```bash
+# API Keys
+OPENAI_API_KEY=your-key-here
+GEMINI_API_KEY=your-key-here
+CLAUDE_API_KEY=your-key-here
+
+# Google Cloud Configuration
+GOOGLE_CLOUD_PROJECT=madison-county-title
+GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
+GCS_BUCKET_NAME=madison-county-title-plant
+DOCUMENT_AI_PROCESSOR_ID=2a9f06e7330cbb0a
+DOCUMENT_AI_LOCATION=us
+
+# Database Configuration
+DATABASE_URL=postgresql://user:pass@host:port/dbname
+```
 
 #### Production Deployment
 - Google Cloud Platform infrastructure

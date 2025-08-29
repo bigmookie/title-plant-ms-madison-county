@@ -17,15 +17,28 @@ This CLAUDE.md file provides situational awareness for Claude Code when working 
 ### Development Workflow
 1. **Test-Driven Development**: Generate failing tests first, then implement features
 2. **Validation Steps**: Use independent verification for critical data extraction
+   - Deploy sub-agents for validating legal description parsing
+   - Independent verification of entity resolution across documents
+   - Cross-check title chain construction algorithms
 3. **Iterative Refinement**: Review and refine code through multiple passes
 4. **Documentation**: Update technical specs and API documentation as code evolves
+
+### Enhanced Reasoning for Complex Tasks
+When tackling complex challenges, use these keywords to activate deeper reasoning:
+- **"think hard"** - For complex data extraction algorithms
+- **"ultrathink"** - For multi-step legal document analysis workflows
+- Specifically apply to:
+  - Legal description parsing from OCR text
+  - Entity resolution across multiple documents
+  - Title chain construction and gap analysis
+  - Fuzzy matching for document type classification
 
 ## Key Components
 
 ### Data Sources
 1. **Historical Deeds & Deeds of Trust** - Available through three portals:
-   - Historical Books portal (pre-1985)
-   - MID portal (Books 237-3971)
+   - Historical Books portal (Books < 238, includes Book 237)
+   - MID portal (Books 238-3971)
    - DuProcess/NEW portal (Books 3972+, excluded from Phase 1)
 
 2. **Will Records**:
@@ -38,21 +51,25 @@ This CLAUDE.md file provides situational awareness for Claude Code when working 
    - Case file inquiries (1992-2009)
 
 ### Existing Infrastructure
-- **Document Puller**: `madison_county_doc_puller/doc_puller.py` - Selenium-based web scraper for automated PDF downloads
-- **Document Reader**: `doc_reader/` - Google Document AI integration for OCR text extraction
-- **Data Models**: `records_models.py` - Structured data models for legal documents with support for surface/mineral/timber interests
-- **Index Files**: `madison_docs/` - Extensive collection of spreadsheet indexes containing book/page references
+- TBD
 
 ### Project Phases
 
 #### Phase 1: Data Collection & Storage
-- Download all available historical documents (excluding "NEW" set)
+- Download all available historical and MID documents (excluding "NEW" set)
+  - Priority 1: Will Records (historical wills, indexes)
+  - Priority 2: Historical Deeds (Books < 238)
+  - Priority 3: MID portal documents (Books 238-3971)
 - Optimize PDFs for storage efficiency
 - Implement logical file organization in Google Cloud Storage
 - Process existing index spreadsheets to generate download queues
+  - Extract document types from InstrumentType field using regex pattern before " -"
+  - Implement fuzzy matching for truncated document types
+  - Map to standardized document type codes
 
 #### Phase 2: Text Extraction & Indexing
-- Extract text from all documents using Google Document AI
+- Extract raw text from all documents using Google Document AI (first step)
+- Apply AI processing only for error correction and data structuring (second step)
 - Parse and structure extracted data according to legal document models
 - Create searchable indexes for property descriptions, parties, dates, and document types
 
@@ -64,9 +81,10 @@ This CLAUDE.md file provides situational awareness for Claude Code when working 
 
 ## Technical Stack
 - **Language**: Python
-- **Web Scraping**: Selenium WebDriver
-- **OCR**: Google Document AI
-- **Storage**: Google Cloud Storage
+- **Web Scraping**: Selenium WebDriver (with retry mechanisms for failures)
+- **OCR**: Google Document AI (primary text extraction)
+- **AI Services**: Optional post-processing for error correction
+- **Storage**: Google Cloud Storage (with local-to-GCS upload pipeline)
 - **Data Models**: Python dataclasses with enum-based classification system
 
 ## Success Criteria
