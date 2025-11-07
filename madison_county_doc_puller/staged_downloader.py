@@ -43,10 +43,7 @@ from madison_county_doc_puller.download_queue_manager import (
     STAGE_CONFIGS
 )
 from madison_county_doc_puller.pdf_optimizer import PDFOptimizer
-
-# Import GCS manager
-sys.path.insert(0, str(Path(__file__).parent.parent / 'madison_title_plant'))
-from storage.gcs_manager import GCSManager
+from madison_county_doc_puller.gcs_manager import GCSManager
 
 # ============================================================================
 # Configuration
