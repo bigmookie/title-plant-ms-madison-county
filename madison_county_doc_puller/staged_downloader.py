@@ -27,7 +27,7 @@ import json
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 
 # Add parent directory to path
@@ -42,6 +42,11 @@ from madison_county_doc_puller.download_queue_manager import (
     determine_portal,
     STAGE_CONFIGS
 )
+from madison_county_doc_puller.pdf_optimizer import PDFOptimizer
+
+# Import GCS manager
+sys.path.insert(0, str(Path(__file__).parent.parent / 'madison_title_plant'))
+from storage.gcs_manager import GCSManager
 
 # ============================================================================
 # Configuration
@@ -50,6 +55,10 @@ from madison_county_doc_puller.download_queue_manager import (
 LOG_FILE = Path(__file__).parent / 'staged_download.log'
 CHECKPOINT_DIR = Path(__file__).parent / 'checkpoints'
 CHECKPOINT_DIR.mkdir(exist_ok=True)
+
+# GCS Configuration
+GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'madison-county-title-plant')
+GCS_CREDENTIALS_PATH = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -147,16 +156,21 @@ class DownloadStatistics:
         self.total_failed = 0
         self.total_skipped = 0
         self.total_mismatches = 0
+        self.total_bytes_original = 0
+        self.total_bytes_optimized = 0
         self.errors_by_type = {}
         self.portal_stats = {'historical': 0, 'mid': 0, 'new': 0}
 
-    def record_success(self, portal: str, book_page_mismatch: bool = False):
+    def record_success(self, portal: str, book_page_mismatch: bool = False,
+                      original_size: int = 0, optimized_size: int = 0):
         """Record successful download."""
         self.total_attempted += 1
         self.total_completed += 1
         self.portal_stats[portal] = self.portal_stats.get(portal, 0) + 1
         if book_page_mismatch:
             self.total_mismatches += 1
+        self.total_bytes_original += original_size
+        self.total_bytes_optimized += optimized_size
 
     def record_failure(self, error: str, portal: str):
         """Record failed download."""
@@ -185,6 +199,9 @@ class DownloadStatistics:
 
     def to_dict(self) -> Dict:
         """Export statistics as dictionary."""
+        savings = self.total_bytes_original - self.total_bytes_optimized
+        savings_pct = (savings / self.total_bytes_original * 100) if self.total_bytes_original > 0 else 0
+
         return {
             'start_time': self.start_time.isoformat(),
             'duration_hours': (datetime.now() - self.start_time).total_seconds() / 3600,
@@ -196,6 +213,10 @@ class DownloadStatistics:
             'mismatch_rate': (self.total_mismatches / self.total_completed * 100) if self.total_completed > 0 else 0,
             'success_rate': self.get_success_rate(),
             'docs_per_hour': self.get_docs_per_hour(),
+            'bytes_original': self.total_bytes_original,
+            'bytes_optimized': self.total_bytes_optimized,
+            'bytes_saved': savings,
+            'optimization_rate': savings_pct,
             'errors_by_type': self.errors_by_type,
             'portal_stats': self.portal_stats
         }
@@ -217,6 +238,14 @@ class DownloadStatistics:
             mismatch_rate = (self.total_mismatches / self.total_completed * 100)
             print(f"\nValidation:")
             print(f"  Mismatches:      {self.total_mismatches:,} ({mismatch_rate:.1f}%)")
+
+        if self.total_bytes_original > 0:
+            savings = self.total_bytes_original - self.total_bytes_optimized
+            savings_pct = (savings / self.total_bytes_original * 100)
+            print(f"\nStorage Optimization:")
+            print(f"  Original size:   {self.total_bytes_original / 1024 / 1024:.1f} MB")
+            print(f"  Optimized size:  {self.total_bytes_optimized / 1024 / 1024:.1f} MB")
+            print(f"  Saved:           {savings / 1024 / 1024:.1f} MB ({savings_pct:.1f}%)")
 
         if self.portal_stats:
             print("\nBy Portal:")
@@ -262,6 +291,28 @@ class StagedDownloadManager:
 
         # Initialize downloader (will be created per document type)
         self.downloader = None
+
+        # Initialize GCS manager and PDF optimizer (unless dry run)
+        self.gcs_manager = None
+        self.pdf_optimizer = None
+        if not dry_run:
+            try:
+                self.gcs_manager = GCSManager(
+                    bucket_name=GCS_BUCKET_NAME,
+                    credentials_path=GCS_CREDENTIALS_PATH
+                )
+                logger.info(f"✓ Connected to GCS bucket: {GCS_BUCKET_NAME}")
+            except Exception as e:
+                logger.error(f"Failed to initialize GCS: {e}")
+                logger.error("Set GOOGLE_APPLICATION_CREDENTIALS environment variable")
+                raise
+
+            try:
+                self.pdf_optimizer = PDFOptimizer(quality='ebook')
+                logger.info("✓ PDF optimizer initialized")
+            except Exception as e:
+                logger.warning(f"PDF optimizer not available: {e}")
+                logger.warning("Install ghostscript: sudo apt-get install ghostscript")
 
         logger.info(f"Initialized {STAGE_CONFIGS[stage]['name']}")
         if dry_run:
@@ -343,31 +394,79 @@ class StagedDownloadManager:
             logger.error(f"Download failed for Instrument {instrument_number} (Book {book}, Page {page}): {e}")
             raise
 
-    def upload_to_gcs(self, local_path: str, doc: Dict) -> str:
+    def upload_to_gcs(self, local_path: str, doc: Dict) -> Tuple[str, int, int]:
         """
-        Upload document to Google Cloud Storage.
+        Optimize and upload document to Google Cloud Storage.
 
         Args:
             local_path: Local file path
             doc: Document record
 
         Returns:
-            GCS path
+            Tuple of (gcs_url, original_size, optimized_size)
         """
         if self.dry_run:
-            return f"gs://madison-county-title-plant/optimized-documents/deed/{doc['book']:04d}-{doc['page']:04d}.pdf"
+            mock_gcs = f"gs://madison-county-title-plant/optimized-documents/deed/{doc['book']:04d}-{doc['page']:04d}.pdf"
+            return (mock_gcs, 30000, 15000)  # Mock sizes
 
-        # TODO: Integrate with GCS manager
-        # For now, return mock path
-        doc_type_folder = doc.get('document_type', 'unknown').lower().replace('_', '-')
-        gcs_path = f"gs://madison-county-title-plant/optimized-documents/{doc_type_folder}/{doc['book']:04d}-{doc['page']:04d}.pdf"
+        local_file = Path(local_path)
 
-        logger.info(f"[MOCK] Uploaded to {gcs_path}")
-        return gcs_path
+        # Get original size
+        original_size = local_file.stat().st_size
+
+        # Optimize PDF if optimizer available
+        optimized_size = original_size
+        if self.pdf_optimizer:
+            try:
+                _, original_size, optimized_size = self.pdf_optimizer.optimize_in_place(local_file)
+                logger.info(f"Optimized PDF: {original_size:,} → {optimized_size:,} bytes")
+            except Exception as e:
+                logger.warning(f"PDF optimization failed, uploading original: {e}")
+
+        # Determine GCS path based on document type and book number
+        doc_type = doc.get('document_type', 'unknown').lower().replace('_', '-')
+        book = doc['book']
+        page = doc['page']
+        instrument_number = doc.get('instrument_number', 0)
+
+        # Organize by book ranges for better structure
+        if book < 238:
+            folder_prefix = 'historical'
+        elif book < 1000:
+            folder_prefix = 'mid-early'
+        else:
+            folder_prefix = 'mid-recent'
+
+        gcs_path = f"documents/{folder_prefix}/{doc_type}/{book:04d}-{page:04d}.pdf"
+
+        # Metadata for GCS
+        metadata = {
+            'book': str(book),
+            'page': str(page),
+            'instrument_number': str(instrument_number),
+            'document_type': doc_type,
+            'instrument_type': doc.get('instrument_type_parsed', ''),
+            'original_size': str(original_size),
+            'optimized_size': str(optimized_size)
+        }
+
+        # Upload to GCS
+        try:
+            gcs_url, checksum = self.gcs_manager.upload_file(
+                local_path=local_file,
+                gcs_path=gcs_path,
+                metadata=metadata
+            )
+            logger.info(f"Uploaded to GCS: {gcs_url}")
+            return (gcs_url, original_size, optimized_size)
+
+        except Exception as e:
+            logger.error(f"GCS upload failed: {e}")
+            raise
 
     def process_document(self, doc: Dict):
         """
-        Process a single document: download, upload, update database.
+        Process a single document: download, optimize, upload, update database.
 
         Args:
             doc: Document record
@@ -385,27 +484,30 @@ class StagedDownloadManager:
             if not local_path:
                 raise Exception("Download returned None")
 
-            # Upload to GCS
-            gcs_path = self.upload_to_gcs(local_path, doc)
+            # Optimize and upload to GCS
+            gcs_url, original_size, optimized_size = self.upload_to_gcs(local_path, doc)
 
             # Mark as completed with validation data
             self.queue.mark_completed(
                 doc_id=doc_id,
-                gcs_path=gcs_path,
+                gcs_path=gcs_url,
                 actual_book=validation_data.get('actual_book'),
                 actual_page=validation_data.get('actual_page'),
                 book_page_mismatch=validation_data.get('book_page_mismatch', False)
             )
 
-            # Update statistics
+            # Update statistics with file sizes
             self.stats.record_success(
                 portal=portal,
-                book_page_mismatch=validation_data.get('book_page_mismatch', False)
+                book_page_mismatch=validation_data.get('book_page_mismatch', False),
+                original_size=original_size,
+                optimized_size=optimized_size
             )
 
-            # Cleanup local file
+            # Cleanup local file after successful upload
             if not self.dry_run and Path(local_path).exists():
                 Path(local_path).unlink()
+                logger.debug(f"Cleaned up local file: {local_path}")
 
         except Exception as e:
             error_msg = str(e)[:500]
@@ -517,15 +619,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Stages:
-  stage-0-test      Test run (20 documents)
-  stage-1-small     Small scale (2,000 documents)
-  stage-2-medium    Medium scale (50,000 documents)
-  stage-3-large     Large scale (900,000+ documents)
-  stage-4-retry     Retry failed downloads
+  stage-0-test            Test run (20 documents)
+  stage-historical-all    All historical books 1-237
+  stage-1-small           Small scale (2,000 documents)
+  stage-2-medium          Medium scale (50,000 documents)
+  stage-3-large           Large scale (900,000+ documents)
+  stage-4-retry           Retry failed downloads
 
 Examples:
   # Test run
   python3 staged_downloader.py --stage stage-0-test --dry-run
+
+  # Download all historical records
+  python3 staged_downloader.py --stage stage-historical-all
 
   # Small scale download
   python3 staged_downloader.py --stage stage-1-small

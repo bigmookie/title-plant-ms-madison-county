@@ -1,0 +1,602 @@
+[
+  {
+    "id": 676048,
+    "book": 3150,
+    "page": 182,
+    "related_items": "989662 bk:4371/203"
+  },
+  {
+    "id": 766736,
+    "book": 3635,
+    "page": 442,
+    "related_items": "948108 bk:4156/913"
+  },
+  {
+    "id": 924748,
+    "book": 4523,
+    "page": 134,
+    "related_items": "658382 bk:2711/812"
+  },
+  {
+    "id": 856109,
+    "book": 4131,
+    "page": 164,
+    "related_items": "672240 bk:2784/525"
+  },
+  {
+    "id": 829239,
+    "book": 3977,
+    "page": 641,
+    "related_items": "962019 bk:4238/501"
+  },
+  {
+    "id": 101591,
+    "book": 1,
+    "page": 552,
+    "related_items": "1992001471 bk:1    /471"
+  },
+  {
+    "id": 911914,
+    "book": 4449,
+    "page": 802,
+    "related_items": "981931 bk:4330/11"
+  },
+  {
+    "id": 856110,
+    "book": 4131,
+    "page": 167,
+    "related_items": "885837 bk:3821/46"
+  },
+  {
+    "id": 917616,
+    "book": 4482,
+    "page": 778,
+    "related_items": "1003626 bk:4435/626"
+  },
+  {
+    "id": 833907,
+    "book": 4006,
+    "page": 633,
+    "related_items": "928017 bk:4049/622"
+  },
+  {
+    "id": 831092,
+    "book": 3988,
+    "page": 893,
+    "related_items": "805649 bk:3441/682"
+  },
+  {
+    "id": 880589,
+    "book": 4275,
+    "page": 219,
+    "related_items": "972700 bk:4280/546"
+  },
+  {
+    "id": 836938,
+    "book": 4024,
+    "page": 755,
+    "related_items": "711692 bk:2991/784"
+  },
+  {
+    "id": 852546,
+    "book": 4109,
+    "page": 35,
+    "related_items": "975023 bk:4293/824"
+  },
+  {
+    "id": 798902,
+    "book": 3806,
+    "page": 301,
+    "related_items": "937092 bk:4105/750"
+  },
+  {
+    "id": 859500,
+    "book": 4152,
+    "page": 575,
+    "related_items": "838289 bk:3597/173"
+  },
+  {
+    "id": 824216,
+    "book": 3948,
+    "page": 776,
+    "related_items": "920348 bk:4002/839\n975786 bk:4297/441"
+  },
+  {
+    "id": 829271,
+    "book": 3977,
+    "page": 779,
+    "related_items": "760792 bk:3223/123"
+  },
+  {
+    "id": 866155,
+    "book": 4191,
+    "page": 68,
+    "related_items": "487702 bk:1986/810"
+  },
+  {
+    "id": 841233,
+    "book": 4051,
+    "page": 12,
+    "related_items": "884923 bk:3815/862"
+  },
+  {
+    "id": 735394,
+    "book": 3471,
+    "page": 225,
+    "related_items": "1000640 bk:4419/446"
+  },
+  {
+    "id": 887158,
+    "book": 4310,
+    "page": 529,
+    "related_items": "631894 bk:2590/235"
+  },
+  {
+    "id": 551774,
+    "book": 2506,
+    "page": 236,
+    "related_items": "974999 bk:4293/696"
+  },
+  {
+    "id": 680015,
+    "book": 12,
+    "page": 274,
+    "related_items": "2017013433 bk:13   /433"
+  },
+  {
+    "id": 165378,
+    "book": 3,
+    "page": 220,
+    "related_items": "1995003151 bk:3    /151"
+  },
+  {
+    "id": 907281,
+    "book": 4422,
+    "page": 55,
+    "related_items": "1002256 bk:4428/280"
+  },
+  {
+    "id": 632678,
+    "book": 2922,
+    "page": 693,
+    "related_items": "978153 bk:4310/46"
+  },
+  {
+    "id": 857744,
+    "book": 4142,
+    "page": 25,
+    "related_items": "469545 bk:1910/559"
+  },
+  {
+    "id": 867042,
+    "book": 4196,
+    "page": 194,
+    "related_items": "932151 bk:4074/250"
+  },
+  {
+    "id": 686300,
+    "book": 3204,
+    "page": 918,
+    "related_items": "946538 bk:4147/627"
+  },
+  {
+    "id": 830365,
+    "book": 3983,
+    "page": 662,
+    "related_items": "853194 bk:3662/300"
+  },
+  {
+    "id": 76090,
+    "book": 1,
+    "page": 159,
+    "related_items": "1992001159 bk:1    /159"
+  },
+  {
+    "id": 864601,
+    "book": 4181,
+    "page": 689,
+    "related_items": "867867 bk:3740/964"
+  },
+  {
+    "id": 858426,
+    "book": 4146,
+    "page": 302,
+    "related_items": "961489 bk:4235/403"
+  },
+  {
+    "id": 863119,
+    "book": 4173,
+    "page": 174,
+    "related_items": "817776 bk:3507/639"
+  },
+  {
+    "id": 812941,
+    "book": 3885,
+    "page": 33,
+    "related_items": "959424 bk:4224/663"
+  },
+  {
+    "id": 881719,
+    "book": 4281,
+    "page": 131,
+    "related_items": "985386 bk:4349/564"
+  },
+  {
+    "id": 573040,
+    "book": 9,
+    "page": 299,
+    "related_items": "2018013773 bk:13   /773"
+  },
+  {
+    "id": 917013,
+    "book": 4479,
+    "page": 593,
+    "related_items": "1011983 bk:4484/908\n1011983 bk:4484/908"
+  },
+  {
+    "id": 850192,
+    "book": 4093,
+    "page": 881,
+    "related_items": "937604 bk:4109/385"
+  },
+  {
+    "id": 873088,
+    "book": 4233,
+    "page": 315,
+    "related_items": "1012712 bk:4489/173"
+  },
+  {
+    "id": 170654,
+    "book": 3,
+    "page": 333,
+    "related_items": "1901001001 bk:1    /1"
+  },
+  {
+    "id": 211051,
+    "book": 4,
+    "page": 196,
+    "related_items": "1999004562 bk:4    /562\n1999004585 bk:4    /585"
+  },
+  {
+    "id": 155004,
+    "book": 3,
+    "page": 81,
+    "related_items": "1901001001 bk:1    /1"
+  },
+  {
+    "id": 850612,
+    "book": 4096,
+    "page": 447,
+    "related_items": "919068 bk:3994/921"
+  },
+  {
+    "id": 899641,
+    "book": 4378,
+    "page": 397,
+    "related_items": "1012399 bk:4487/255"
+  },
+  {
+    "id": 915149,
+    "book": 4468,
+    "page": 726,
+    "related_items": "449586 bk:1826/916"
+  },
+  {
+    "id": 907221,
+    "book": 4421,
+    "page": 582,
+    "related_items": "1000276 bk:4417/664"
+  },
+  {
+    "id": 831574,
+    "book": 3992,
+    "page": 54,
+    "related_items": "748898 bk:3157/533"
+  },
+  {
+    "id": 891399,
+    "book": 4334,
+    "page": 122,
+    "related_items": "927088 bk:4043/546"
+  },
+  {
+    "id": 858882,
+    "book": 4149,
+    "page": 57,
+    "related_items": "867413 bk:3738/433"
+  },
+  {
+    "id": 833542,
+    "book": 4003,
+    "page": 756,
+    "related_items": "789999 bk:3374/840"
+  },
+  {
+    "id": 886475,
+    "book": 4306,
+    "page": 676,
+    "related_items": "964094 bk:4249/716"
+  },
+  {
+    "id": 862092,
+    "book": 4167,
+    "page": 133,
+    "related_items": "932665 bk:4077/34"
+  },
+  {
+    "id": 247631,
+    "book": 1178,
+    "page": 763,
+    "related_items": "978411 bk:4311/118"
+  },
+  {
+    "id": 845838,
+    "book": 4077,
+    "page": 921,
+    "related_items": "480730 bk:1961/753"
+  },
+  {
+    "id": 899272,
+    "book": 4376,
+    "page": 505,
+    "related_items": "695002 bk:2899/21"
+  },
+  {
+    "id": 819986,
+    "book": 3924,
+    "page": 96,
+    "related_items": "934963 bk:4092/594"
+  },
+  {
+    "id": 912718,
+    "book": 4454,
+    "page": 688,
+    "related_items": "834341 bk:3576/433"
+  },
+  {
+    "id": 112839,
+    "book": 840,
+    "page": 6340,
+    "related_items": "987818 bk:4362/305"
+  },
+  {
+    "id": 452391,
+    "book": 2057,
+    "page": 928,
+    "related_items": "954051 bk:4191/297"
+  },
+  {
+    "id": 752679,
+    "book": 3562,
+    "page": 123,
+    "related_items": "995234 bk:4389/713"
+  },
+  {
+    "id": 919855,
+    "book": 4496,
+    "page": 46,
+    "related_items": "998184 bk:4405/758"
+  },
+  {
+    "id": 765786,
+    "book": 3631,
+    "page": 153,
+    "related_items": "972516 bk:4279/554\n983729 bk:4340/499"
+  },
+  {
+    "id": 563492,
+    "book": 2561,
+    "page": 100,
+    "related_items": "917133 bk:3982/381"
+  },
+  {
+    "id": 857774,
+    "book": 4142,
+    "page": 200,
+    "related_items": "951358 bk:4175/256"
+  },
+  {
+    "id": 713315,
+    "book": 3353,
+    "page": 370,
+    "related_items": "986655 bk:4356/372"
+  },
+  {
+    "id": 677518,
+    "book": 12,
+    "page": 210,
+    "related_items": "2012010563 bk:10   /563"
+  },
+  {
+    "id": 392680,
+    "book": 6,
+    "page": 270,
+    "related_items": "2006006664 bk:6    /664"
+  },
+  {
+    "id": 877718,
+    "book": 4258,
+    "page": 649,
+    "related_items": "691320 bk:2877/808"
+  },
+  {
+    "id": 874248,
+    "book": 4239,
+    "page": 694,
+    "related_items": "771658 bk:3268/860"
+  },
+  {
+    "id": 845031,
+    "book": 4073,
+    "page": 650,
+    "related_items": "1005491 bk:4447/670"
+  },
+  {
+    "id": 718949,
+    "book": 3384,
+    "page": 184,
+    "related_items": "935079 bk:4093/92"
+  },
+  {
+    "id": 512576,
+    "book": 2329,
+    "page": 288,
+    "related_items": "982046 bk:4330/535"
+  },
+  {
+    "id": 757125,
+    "book": 13,
+    "page": 765,
+    "related_items": "2014011553 bk:11   /553"
+  },
+  {
+    "id": 886722,
+    "book": 4308,
+    "page": 195,
+    "related_items": "983588 bk:4339/620"
+  },
+  {
+    "id": 774927,
+    "book": 3678,
+    "page": 342,
+    "related_items": "1006954 bk:4456/768"
+  },
+  {
+    "id": 905292,
+    "book": 4410,
+    "page": 539,
+    "related_items": "789302 bk:3370/290"
+  },
+  {
+    "id": 770348,
+    "book": 3654,
+    "page": 21,
+    "related_items": "994908 bk:4387/817"
+  },
+  {
+    "id": 789834,
+    "book": 3756,
+    "page": 453,
+    "related_items": "965255 bk:4255/791\n965929 bk:4259/715\n996386 bk:4396/536"
+  },
+  {
+    "id": 920999,
+    "book": 4502,
+    "page": 727,
+    "related_items": "989406 bk:4369/796"
+  },
+  {
+    "id": 507291,
+    "book": 2306,
+    "page": 748,
+    "related_items": "978966 bk:4314/91"
+  },
+  {
+    "id": 344756,
+    "book": 1504,
+    "page": 805,
+    "related_items": "971268 bk:4272/795"
+  },
+  {
+    "id": 841298,
+    "book": 4051,
+    "page": 298,
+    "related_items": "654215 bk:2703/906"
+  },
+  {
+    "id": 817830,
+    "book": 3911,
+    "page": 269,
+    "related_items": "981904 bk:4329/840"
+  },
+  {
+    "id": 597604,
+    "book": 2732,
+    "page": 578,
+    "related_items": "998385 bk:4406/785"
+  },
+  {
+    "id": 540502,
+    "book": 2454,
+    "page": 346,
+    "related_items": "997851 bk:4403/949"
+  },
+  {
+    "id": 465972,
+    "book": 2118,
+    "page": 229,
+    "related_items": "1000127 bk:4417/23\n1000723 bk:4419/925"
+  },
+  {
+    "id": 843246,
+    "book": 4062,
+    "page": 90,
+    "related_items": "752244 bk:3174/15\n962260 bk:4239/857"
+  },
+  {
+    "id": 591515,
+    "book": 2700,
+    "page": 122,
+    "related_items": "922771 bk:4017/577\n983704 bk:4340/386"
+  },
+  {
+    "id": 915624,
+    "book": 4471,
+    "page": 316,
+    "related_items": "981373 bk:4326/682"
+  },
+  {
+    "id": 461461,
+    "book": 2097,
+    "page": 968,
+    "related_items": "944112 bk:4131/894"
+  },
+  {
+    "id": 838091,
+    "book": 4031,
+    "page": 248,
+    "related_items": "783458 bk:3337/158"
+  },
+  {
+    "id": 400919,
+    "book": 1831,
+    "page": 628,
+    "related_items": "1011963 bk:4484/792"
+  },
+  {
+    "id": 884241,
+    "book": 4295,
+    "page": 282,
+    "related_items": "951215 bk:4174/514"
+  },
+  {
+    "id": 830373,
+    "book": 3983,
+    "page": 688,
+    "related_items": "749089 bk:3158/557"
+  },
+  {
+    "id": 675689,
+    "book": 3148,
+    "page": 492,
+    "related_items": "936508 bk:4102/126"
+  },
+  {
+    "id": 819091,
+    "book": 3919,
+    "page": 443,
+    "related_items": "916657 bk:3979/630"
+  },
+  {
+    "id": 788863,
+    "book": 3751,
+    "page": 589,
+    "related_items": "960073 bk:4227/598\n987907 bk:4362/651"
+  },
+  {
+    "id": 816880,
+    "book": 3905,
+    "page": 523,
+    "related_items": "918672 bk:3992/488"
+  }
+]

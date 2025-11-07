@@ -68,6 +68,25 @@ STAGE_CONFIGS = {
             'book_ranges': [(1, 50), (238, 300)],  # Sample from each portal
         }
     },
+    'stage-historical-all': {
+        'name': 'Historical Books Complete',
+        'description': 'Download all historical records (Books 1-237)',
+        'limit': None,  # No limit - download all
+        'filters': {
+            'priority': None,  # All priorities
+            'book_ranges': [(1, 238)],  # Historical books only
+        }
+    },
+    'stage-historical-single': {
+        'name': 'Single Historical Book',
+        'description': 'Download a single historical book (specify in code)',
+        'limit': None,
+        'filters': {
+            'priority': None,
+            'book_ranges': None,  # Will be set programmatically
+            'specific_book': None,  # Set this to download specific book
+        }
+    },
     'stage-1-small': {
         'name': 'Small Scale',
         'description': 'Download 2,000 documents (Priority 1 & 2)',

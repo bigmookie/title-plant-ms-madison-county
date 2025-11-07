@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS index_documents (
     download_status VARCHAR(50) DEFAULT 'pending' CHECK (
         download_status IN ('pending', 'in_progress', 'completed', 'failed', 'skipped')
     ),
+    download_priority INTEGER DEFAULT 3,  -- Priority: 1 (high), 2 (medium), 3 (low)
     download_attempts INTEGER DEFAULT 0,
     downloaded_at TIMESTAMP,
     download_error TEXT,  -- Store error message if failed
