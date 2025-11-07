@@ -157,22 +157,21 @@ class DownloadQueueManager:
 
         logger.info(f"Initialized queue manager for {self.config['name']}")
 
-    def fetch_next_batch(self, limit: Optional[int] = None) -> List[Dict]:
+    def _build_filter_where_clause(self, include_status: bool = True) -> Tuple[str, List]:
         """
-        Fetch next batch of documents to download.
+        Build WHERE clause based on stage configuration filters.
 
         Args:
-            limit: Override batch size (optional)
+            include_status: Whether to include download_status = 'pending' in clause
 
         Returns:
-            List of document records as dictionaries
+            Tuple of (where_clause, params)
         """
-        limit = limit or self.batch_size
-        cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-
-        # Build WHERE clause based on stage configuration
-        where_clauses = ["download_status = 'pending'"]
+        where_clauses = []
         params = []
+
+        if include_status:
+            where_clauses.append("download_status = 'pending'")
 
         # Priority filter
         if self.config['filters'].get('priority'):
@@ -187,6 +186,26 @@ class DownloadQueueManager:
                 book_conditions.append("(book >= %s AND book < %s)")
                 params.extend([min_book, max_book])
             where_clauses.append(f"({' OR '.join(book_conditions)})")
+
+        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        return (where_clause, params)
+
+    def fetch_next_batch(self, limit: Optional[int] = None) -> List[Dict]:
+        """
+        Fetch next batch of documents to download.
+
+        Args:
+            limit: Override batch size (optional)
+
+        Returns:
+            List of document records as dictionaries
+        """
+        limit = limit or self.batch_size
+        cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+
+        # Build WHERE clause based on stage configuration
+        where_clause, params = self._build_filter_where_clause(include_status=True)
+        where_clauses = [where_clause]
 
         # Resume from last checkpoint
         if self.last_fetched_id:
@@ -399,6 +418,7 @@ class DownloadQueueManager:
     def get_queue_statistics(self) -> Dict:
         """
         Get current queue statistics for this stage.
+        Applies stage filters to show only documents relevant to this stage.
 
         Returns:
             Dictionary with queue stats
@@ -407,26 +427,33 @@ class DownloadQueueManager:
 
         stats = {}
 
-        # Overall counts by status
-        cursor.execute("""
+        # Get base filter clause (without status)
+        base_filter, base_params = self._build_filter_where_clause(include_status=False)
+
+        # Overall counts by status (filtered by stage)
+        query = f"""
             SELECT download_status, COUNT(*) as count
             FROM index_documents
+            WHERE {base_filter}
             GROUP BY download_status
-        """)
+        """
+        cursor.execute(query, base_params)
         stats['by_status'] = {row['download_status']: row['count'] for row in cursor.fetchall()}
 
-        # By priority for pending
-        cursor.execute("""
+        # By priority for pending (filtered by stage)
+        pending_filter, pending_params = self._build_filter_where_clause(include_status=True)
+        query = f"""
             SELECT download_priority, COUNT(*) as count
             FROM index_documents
-            WHERE download_status = 'pending'
+            WHERE {pending_filter}
             GROUP BY download_priority
             ORDER BY download_priority
-        """)
+        """
+        cursor.execute(query, pending_params)
         stats['pending_by_priority'] = {row['download_priority']: row['count'] for row in cursor.fetchall()}
 
-        # By portal for pending
-        cursor.execute("""
+        # By portal for pending (filtered by stage)
+        query = f"""
             SELECT
                 CASE
                     WHEN book < 238 THEN 'historical'
@@ -435,9 +462,10 @@ class DownloadQueueManager:
                 END as portal,
                 COUNT(*) as count
             FROM index_documents
-            WHERE download_status = 'pending'
+            WHERE {pending_filter}
             GROUP BY portal
-        """)
+        """
+        cursor.execute(query, pending_params)
         stats['pending_by_portal'] = {row['portal']: row['count'] for row in cursor.fetchall()}
 
         # Recent activity (last hour)

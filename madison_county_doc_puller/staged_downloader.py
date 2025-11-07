@@ -415,7 +415,7 @@ class StagedDownloadManager:
         optimized_size = original_size
         if self.pdf_optimizer:
             try:
-                _, original_size, optimized_size = self.pdf_optimizer.optimize_in_place(local_file)
+                original_size, optimized_size = self.pdf_optimizer.optimize_in_place(local_file)
                 logger.info(f"Optimized PDF: {original_size:,} → {optimized_size:,} bytes")
             except Exception as e:
                 logger.warning(f"PDF optimization failed, uploading original: {e}")
