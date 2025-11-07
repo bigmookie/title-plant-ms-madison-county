@@ -4,7 +4,7 @@ Madison County Document Download - Staged Downloader
 
 Main orchestration script for staged document downloads. Integrates with:
 - Index database for queue management
-- Existing doc_puller for actual downloads
+- simple_doc_downloader for fast downloads (requests-based)
 - GCS for storage
 - Checkpointing for resumability
 
