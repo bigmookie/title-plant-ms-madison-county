@@ -275,6 +275,49 @@ FROM index_documents
 GROUP BY source;
 ```
 
+#### Query Related Items (Cross-References)
+
+```sql
+-- Find documents with related items
+SELECT book, page, related_items
+FROM index_documents
+WHERE related_items IS NOT NULL
+  AND jsonb_array_length(related_items) > 0
+LIMIT 10;
+
+-- Count related items per document
+SELECT
+    jsonb_array_length(related_items) as num_references,
+    COUNT(*) as document_count
+FROM index_documents
+WHERE related_items IS NOT NULL
+GROUP BY num_references
+ORDER BY num_references;
+
+-- Find documents referenced by a specific document
+SELECT
+    ref->>'instrument_number' as ref_instrument,
+    ref->>'book' as ref_book,
+    ref->>'page' as ref_page,
+    ref->>'exists_in_db' as found,
+    ref->>'target_id' as target_doc_id
+FROM index_documents,
+     jsonb_array_elements(related_items) as ref
+WHERE book = 3948 AND page = 776;
+
+-- Find all documents that reference a specific book/page
+SELECT
+    d.id,
+    d.book as source_book,
+    d.page as source_page,
+    d.instrument_type_parsed,
+    ref->>'instrument_number' as ref_instrument
+FROM index_documents d,
+     jsonb_array_elements(d.related_items) as ref
+WHERE ref->>'book' = '4002'
+  AND ref->>'page' = '839';
+```
+
 ### Updating Download Status
 
 ```python

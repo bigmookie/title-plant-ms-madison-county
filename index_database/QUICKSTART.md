@@ -87,6 +87,42 @@ python3 import_index_data.py
 
 **Expected Runtime**: 30-60 minutes to import ~1 million records from 1000+ Excel files.
 
+**Note**: The import automatically stores raw related items text in `related_items_raw`. The `related_items` column (JSONB) will be NULL until you run the parsing script below.
+
+**For existing databases**: If you already imported data with the old schema, run the migration script:
+```bash
+psql -h 127.0.0.1 -p 5432 -U madison_index_app -d madison_county_index -f index_database/migrate_related_items_schema.sql
+```
+
+### Parse Related Items (Optional)
+
+After importing, parse the `related_items_raw` column to create structured cross-references in `related_items`:
+
+```bash
+cd index_database
+
+# Analyze related_items patterns first
+python3 analyze_related_items.py
+
+# Dry run to preview changes
+python3 parse_related_items.py --dry-run
+
+# Parse and cross-reference
+python3 parse_related_items.py
+
+# View statistics
+python3 parse_related_items.py --stats-only
+```
+
+**What this does**:
+- Preserves raw data in `related_items_raw` column
+- Parses format: `"INSTRUMENT_NUMBER bk:BOOK/PAGE"`
+- Handles multiple references (newline-separated)
+- Cross-references with existing documents in database
+- Stores structured JSON with validation flags
+
+**Expected Runtime**: 5-10 minutes for ~1 million records
+
 ### Connect to Database
 
 ```bash

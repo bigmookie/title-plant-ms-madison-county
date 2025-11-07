@@ -440,7 +440,7 @@ class IndexDatabase:
             'ne_of_se', 'nw_of_se', 'sw_of_se', 'se_of_se',
             'address', 'street_name', 'city', 'zip', 'parcel_num',
             'parcel_id', 'ppin', 'patent_num',
-            'workflow_status', 'verified_status', 'doc_status', 'related_items'
+            'workflow_status', 'verified_status', 'doc_status', 'related_items_raw'
         ]
 
         # Build INSERT statement with ON CONFLICT handling
@@ -561,7 +561,7 @@ def load_duprocess_file(file_path: Path) -> List[Dict[str, Any]]:
             'workflow_status': safe_str(row.get('Workflow Status')),
             'verified_status': safe_str(row.get('Verified Status')),
             'doc_status': safe_str(row.get('Doc Status')),
-            'related_items': safe_str(row.get('Related Items (click related item below for viewing options)')),
+            'related_items_raw': safe_str(row.get('Related Items (click related item below for viewing options)')),
         }
 
         # Skip records without valid book/page
@@ -674,7 +674,7 @@ def load_historic_deeds(file_path: Path) -> List[Dict[str, Any]]:
                 'workflow_status': None,
                 'verified_status': None,
                 'doc_status': None,
-                'related_items': None,
+                'related_items_raw': None,
             }
             records.append(record)
 

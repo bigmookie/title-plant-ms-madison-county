@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS index_documents (
     workflow_status VARCHAR(100),
     verified_status VARCHAR(100),
     doc_status VARCHAR(100),
-    related_items TEXT,
+    related_items_raw TEXT,      -- Raw text from DuProcess (e.g., "945431 bk:4140/753")
+    related_items JSONB,          -- Parsed and cross-referenced JSON array
 
     -- Download queue management
     download_status VARCHAR(50) DEFAULT 'pending' CHECK (
@@ -104,6 +105,11 @@ CREATE TABLE IF NOT EXISTS index_documents (
 
     -- Google Cloud Storage path
     gcs_path TEXT,  -- Path to uploaded document in GCS
+
+    -- Validation fields (actual book/page from downloaded document)
+    actual_book INTEGER,           -- Actual book from document response
+    actual_page INTEGER,           -- Actual page from document response
+    book_page_mismatch BOOLEAN DEFAULT FALSE,  -- Flag if index differs from actual
 
     -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
