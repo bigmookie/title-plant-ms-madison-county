@@ -192,17 +192,20 @@ pkill -f cloud-sql-proxy
 ```
 index_database/
 ├── .db_credentials          # Database credentials (created by setup script)
+├── .last_import_time       # Timestamp of last import (for auto-updates)
 ├── .proxy.pid              # Proxy process ID (created when proxy starts)
 ├── cloud-sql-proxy         # Proxy binary (download with setup steps)
 ├── cloud-sql-proxy.log     # Proxy logs
 ├── index_import.log        # Import script logs
+├── index_update.log        # Update script logs
 │
 ├── schema/
 │   └── index_database_schema.sql
 │
 ├── setup_index_database.sh
 ├── start_proxy.sh
-├── import_index_data.py
+├── import_index_data.py    # Initial import of all data
+├── update_index_data.py    # Incremental updates with new files
 ├── README.md               # Full documentation
 └── QUICKSTART.md           # This file
 ```
@@ -293,6 +296,23 @@ cd index_database
 psql -h 127.0.0.1 -p 5432 -U madison_index_app -d madison_county_index
 
 # Run your queries...
+```
+
+### Update with New Files
+```bash
+# Import specific file
+cd index_database
+source .db_credentials
+python3 update_index_data.py --file "madison_docs/DuProcess Indexes/2025-04-01.xlsx"
+
+# Import files matching pattern
+python3 update_index_data.py --pattern "2025-04-*.xlsx"
+
+# Auto-import all new files (based on modification time)
+python3 update_index_data.py --auto
+
+# Dry run to preview changes
+python3 update_index_data.py --auto --dry-run
 ```
 
 ### Re-import Data (if needed)

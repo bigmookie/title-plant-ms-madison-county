@@ -5,6 +5,9 @@
 *.pem
 *.key
 
+# Import tracking
+.last_import_time
+
 # Cloud SQL Auth Proxy
 cloud-sql-proxy
 .proxy.pid

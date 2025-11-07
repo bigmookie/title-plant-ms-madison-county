@@ -301,18 +301,48 @@ index_database/
 │
 ├── setup_index_database.sh           # Database setup script
 ├── start_proxy.sh                    # Cloud SQL Auth Proxy helper
-├── import_index_data.py              # Data import script
+├── import_index_data.py              # Initial data import script (all files)
+├── update_index_data.py              # Incremental update script (new files only)
 │
 ├── .db_credentials                   # Database credentials (DO NOT COMMIT)
+├── .last_import_time                 # Tracking file for auto-updates (generated)
 ├── .proxy.pid                        # Proxy process ID (generated)
 ├── cloud-sql-proxy                   # Proxy binary (download separately)
 ├── cloud-sql-proxy.log              # Proxy logs
-└── index_import.log                 # Import script logs
+├── index_import.log                 # Import script logs
+└── index_update.log                 # Update script logs
 ```
 
 ## Maintenance
 
-### Re-importing Data
+### Updating with New Data
+
+When new DuProcess Excel files are added, use the update script for incremental imports:
+
+```bash
+cd index_database
+source .db_credentials
+
+# Import specific file
+python3 update_index_data.py --file "madison_docs/DuProcess Indexes/2025-04-01.xlsx"
+
+# Import files matching pattern
+python3 update_index_data.py --pattern "2025-04-*.xlsx"
+
+# Auto-import all files modified since last import
+python3 update_index_data.py --auto
+
+# Dry run to preview changes
+python3 update_index_data.py --auto --dry-run
+```
+
+**Features:**
+- **Conflict Handling**: Automatically updates existing records if source file is newer
+- **Tracking**: Maintains `.last_import_time` file for `--auto` mode
+- **Statistics**: Shows before/after comparison of database state
+- **Logging**: All operations logged to `index_update.log`
+
+### Re-importing All Data
 
 If you need to re-import (e.g., after schema changes):
 
