@@ -1,0 +1,35 @@
+# Database sensitive files - DO NOT COMMIT
+
+# Credentials
+.db_credentials
+*.pem
+*.key
+
+# Cloud SQL Auth Proxy
+cloud-sql-proxy
+.proxy.pid
+cloud-sql-proxy.log
+
+# Logs
+*.log
+index_import.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.env
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
