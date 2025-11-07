@@ -64,3 +64,7 @@ Desktop.ini
 # Misc
 *.log
 .claude/
+
+# Runtime state files
+madison_county_doc_puller/checkpoints/
+madison_county_doc_puller/staged_download.log
