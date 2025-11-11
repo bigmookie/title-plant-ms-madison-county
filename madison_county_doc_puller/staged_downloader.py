@@ -421,10 +421,11 @@ class StagedDownloadManager:
                 logger.warning(f"PDF optimization failed, uploading original: {e}")
 
         # Determine GCS path based on document type and book number
-        doc_type = doc.get('document_type', 'unknown').lower().replace('_', '-')
+        # Handle None/empty document_type (87.5% of historical documents have NULL document_type)
+        doc_type = (doc.get('document_type') or 'unknown').lower().replace('_', '-')
         book = doc['book']
         page = doc['page']
-        instrument_number = doc.get('instrument_number', 0)
+        instrument_number = doc.get('instrument_number') or 0
 
         # Organize by book ranges for better structure
         if book < 238:
@@ -442,7 +443,7 @@ class StagedDownloadManager:
             'page': str(page),
             'instrument_number': str(instrument_number),
             'document_type': doc_type,
-            'instrument_type': doc.get('instrument_type_parsed', ''),
+            'instrument_type': doc.get('instrument_type_parsed') or '',
             'original_size': str(original_size),
             'optimized_size': str(optimized_size)
         }
