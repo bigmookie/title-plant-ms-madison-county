@@ -122,6 +122,31 @@ STAGE_CONFIGS = {
             'status': 'failed',
             'max_attempts': 5,
         }
+    },
+    'stage-mid-filtered': {
+        'name': 'MID Portal Filtered Documents',
+        'description': 'Download MID portal (Books 238-3971) with specific document types only',
+        'limit': None,  # No limit - download all matching
+        'filters': {
+            'priority': None,  # Any priority
+            'book_ranges': [(238, 3972)],  # MID portal only
+            'document_types': [
+                'DEED', 'RIGHT OF WAY', 'EASEMENT', 'TRUSTEES DEED', 'TRUST AGREEMENT',
+                'SUBDIVISION PLATS', 'JUDGMENT OR ORDER', 'MISCELLANEOUS', 'MINERAL DEED',
+                'AGREEMENT', 'PROTECTIVE COVENANT', 'HEIRSHIP', 'AGREEMENT-DEEDS',
+                'ASSIGN OIL GAS  MIN', 'MINERAL RIGHT  ROYA', 'AMENDED PROTECTIVE C',
+                'PATENT', 'AMENDMENT(T)', 'DEED RESTRICTIONS', 'REVOCATION  CANCELL',
+                'AMENDMENT TO LEASE', 'SUPPLEMENT', 'AFFIDAVIT "T"', 'NOTICE TO RENEW LEAS',
+                'TAX DEED', 'Transfer on Death Deed', 'OPTION', 'DECLARATION',
+                'MISCELLANEOUS "T"', 'CONTRACT TO SELL', 'LAST WILL AND TESTAM',
+                'EMINENT DOMAIN', 'WAIVER', 'AMENDED DECLARATION', 'SUPPLEMENT TO COVENA',
+                'DECLARATION OF ROAD', 'SEALED', 'ROYALTY DEED', 'RECISSION OF FORECLO',
+                'CORRECTION OF PLAT', 'PROTECTIVE COV TERMI', 'AMENDMENT(W)', 'LIVING WILL',
+                'VOID LEASES 16TH SEC', 'MISCELLANEOUS "C"', 'RECEIVER', 'MAP',
+                'ARCHITECTURAL REVIEW', 'SURVEYS', 'ENVIRONMENTAL PROTEC', 'CERT OF SALESEIZED',
+                'LEASE ASSIGNMENT', 'ASSIGNMENT OF LEASES', 'LEASE CONTRACT', '- [DEED 90W]'
+            ]
+        }
     }
 }
 
@@ -186,6 +211,13 @@ class DownloadQueueManager:
                 book_conditions.append("(book >= %s AND book < %s)")
                 params.extend([min_book, max_book])
             where_clauses.append(f"({' OR '.join(book_conditions)})")
+
+        # Document type filter (for filtered stages)
+        if self.config['filters'].get('document_types'):
+            doc_types = self.config['filters']['document_types']
+            # Use instrument_type_parsed column which contains extracted document type
+            where_clauses.append(f"instrument_type_parsed IN ({','.join(['%s'] * len(doc_types))})")
+            params.extend(doc_types)
 
         where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
         return (where_clause, params)
