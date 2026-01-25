@@ -30,11 +30,11 @@ from tqdm import tqdm
 # Configuration
 # ============================================================================
 
-# Database connection settings (via Cloud SQL Auth Proxy)
+# Database connection settings (local PostgreSQL)
 DB_CONFIG = {
-    'host': '127.0.0.1',  # Cloud SQL Auth Proxy
-    'port': 5432,
-    'database': 'madison_county_index',
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': int(os.getenv('DB_PORT', 5432)),
+    'database': os.getenv('DB_NAME', 'madison_county_index'),
     'user': os.getenv('DB_USER', 'madison_index_app'),
     'password': os.getenv('DB_PASSWORD', ''),
 }
