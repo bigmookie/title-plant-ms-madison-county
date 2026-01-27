@@ -68,3 +68,9 @@ Desktop.ini
 # Runtime state files
 madison_county_doc_puller/checkpoints/
 madison_county_doc_puller/staged_download.log
+
+# Database
+.db_credentials
+*.dump
+backups/
+madison_county_backup*.sql
