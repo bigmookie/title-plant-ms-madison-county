@@ -36,8 +36,10 @@ Excel Spreadsheet Format:
 
 Text File Format:
     [book]/[page] [book_type] or [book]-[page] [book_type]
-    Book type defaults to "deed book" if not specified.
-    Books < 238 are always "deed book".
+    A deed of trust book may be marked with a DT prefix: DT [book]/[page]
+    Lettered books are supported: CCC/165
+    Book type defaults to "deed" if not specified.
+    Books < 238 and lettered books are "deed" unless marked DT.
 
 Required packages:
     pip install requests beautifulsoup4 openpyxl python-dotenv google-cloud-storage
@@ -52,7 +54,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from multiprocessing import cpu_count
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Union
 from dataclasses import dataclass
 
 try:
@@ -143,6 +145,30 @@ DEFAULT_DELAY = 0.5  # Seconds between requests
 # GCS Configuration
 DEFAULT_BUCKET_NAME = "madison-county-title-plant"
 
+# Book series. Deed of trust books are numbered separately from deed books,
+# so DT 151/206 and Deed Book 151, Page 206 are different documents.
+DEED = "deed"
+DEED_OF_TRUST = "deed-of-trust"
+
+# Series labels accepted before or after a book/page reference in input files
+# (other labels are normalized with normalize_doc_type)
+DOC_TYPE_ALIASES = {
+    "d": DEED,
+    "db": DEED,
+    "deed book": DEED,
+    "dt": DEED_OF_TRUST,
+    "dot": DEED_OF_TRUST,
+}
+
+# Lookup portal "Type" code for records in deed of trust books
+DEED_OF_TRUST_TYPE_CODE = "T"
+
+# The oldest deed books are lettered: A-Z, AA-ZZ, AAA-ZZZ
+LETTERED_BOOK_PATTERN = re.compile(r'^([A-Z])\1{0,2}$')
+
+# A book is a number or a lettered book designation (e.g., "CCC")
+BookId = Union[int, str]
+
 
 # =============================================================================
 # Data Classes
@@ -151,7 +177,7 @@ DEFAULT_BUCKET_NAME = "madison-county-title-plant"
 @dataclass
 class DocumentMetadata:
     """Metadata extracted from document lookup response."""
-    book: int
+    book: BookId
     page: int
     grantor: str
     grantee: str
@@ -166,9 +192,9 @@ class DocumentMetadata:
 class DownloadResult:
     """Result of document download attempt."""
     success: bool
-    book: int
+    book: BookId
     page: int
-    actual_book: Optional[int]
+    actual_book: Optional[BookId]
     actual_page: Optional[int]
     local_path: Optional[str]
     error: Optional[str]
@@ -181,17 +207,17 @@ class DownloadResult:
 # GCS Helper Functions
 # =============================================================================
 
-def get_folder_prefix(book: int) -> str:
+def get_folder_prefix(book: BookId) -> str:
     """
     Determine the folder prefix based on book number.
 
     Args:
-        book: Book number
+        book: Book number or lettered book
 
     Returns:
         Folder prefix string (historical, mid-early, or mid-recent)
     """
-    if book < 238:
+    if isinstance(book, str) or book < 238:
         return "historical"
     elif book < 1000:
         return "mid-early"
@@ -225,14 +251,50 @@ def normalize_doc_type(doc_type: str) -> str:
     return normalized if normalized else "unknown"
 
 
-def build_gcs_path(book: int, page: int, doc_type: str = "deed") -> str:
+def parse_book(value) -> Optional[BookId]:
+    """
+    Parse a book number (e.g., "0151" -> 151) or lettered book (e.g., "ccc" -> "CCC").
+
+    Returns:
+        int for numbered books, uppercase str for lettered books, None if invalid
+    """
+    text = str(value).strip().upper()
+    if text.isdigit():
+        return int(text)
+    if LETTERED_BOOK_PATTERN.match(text):
+        return text
+    return None
+
+
+def document_filename(book: BookId, page: int) -> str:
+    """Filename used in GCS, e.g. 0151-0206.pdf or CCC-0165.pdf."""
+    book_part = book if isinstance(book, str) else f"{book:04d}"
+    return f"{book_part}-{page:04d}.pdf"
+
+
+def local_filename(book: BookId, page: int, doc_type: str = DEED) -> str:
+    """
+    Local filename for a document. Deeds of trust get a DT- prefix so they
+    never collide with the deed at the same book/page.
+    """
+    prefix = "DT-" if normalize_doc_type(doc_type) == DEED_OF_TRUST else ""
+    return prefix + document_filename(book, page)
+
+
+def format_reference(book: BookId, page: int, doc_type: str = DEED) -> str:
+    """Human-readable reference, e.g. "Book 14, Page 466" or "DT Book 502, Page 308"."""
+    prefix = "DT " if normalize_doc_type(doc_type) == DEED_OF_TRUST else ""
+    return f"{prefix}Book {book}, Page {page}"
+
+
+def build_gcs_path(book: BookId, page: int, doc_type: str = DEED) -> str:
     """
     Build the GCS path for a document.
 
     Path format: documents/{folder_prefix}/{doc_type}/{book:04d}-{page:04d}.pdf
 
     Args:
-        book: Book number
+        book: Book number or lettered book
         page: Page number
         doc_type: Document type (default: "deed")
 
@@ -241,13 +303,48 @@ def build_gcs_path(book: int, page: int, doc_type: str = "deed") -> str:
     """
     folder_prefix = get_folder_prefix(book)
     normalized_type = normalize_doc_type(doc_type)
-    filename = f"{book:04d}-{page:04d}.pdf"
+    filename = document_filename(book, page)
 
     return f"documents/{folder_prefix}/{normalized_type}/{filename}"
 
 
+def find_gcs_blob(bucket, book: BookId, page: int, doc_type: str):
+    """
+    Find a document's blob in the bucket.
+
+    Deed-book documents are filed under their instrument type (deed, unknown,
+    easement, ...), so every type folder is checked. Deed of trust books are a
+    separate series, so a deed of trust only matches the deed-of-trust folder
+    and a deed never does.
+
+    Returns:
+        The blob, or None if not found
+    """
+    normalized_type = normalize_doc_type(doc_type)
+    blob = bucket.blob(build_gcs_path(book, page, doc_type))
+    if blob.exists():
+        return blob
+
+    if normalized_type == DEED_OF_TRUST:
+        return None
+
+    prefix = f"documents/{get_folder_prefix(book)}/"
+    filename = document_filename(book, page)
+    folders = bucket.list_blobs(prefix=prefix, delimiter="/")
+    list(folders)  # Folder prefixes are only populated once the listing is consumed
+
+    for folder in sorted(folders.prefixes):
+        if folder[len(prefix):].strip("/") in (normalized_type, DEED_OF_TRUST):
+            continue
+        candidate = bucket.blob(f"{folder}{filename}")
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def try_gcs_download(
-    book: int,
+    book: BookId,
     page: int,
     doc_type: str,
     output_dir: Path,
@@ -296,39 +393,12 @@ def try_gcs_download(
         client = storage.Client()
         bucket = client.bucket(bucket_name)
 
-        # Build GCS path
-        gcs_path = build_gcs_path(book, page, doc_type)
-        blob = bucket.blob(gcs_path)
-
-        # Check if exists
-        if not blob.exists():
-            # Try alternative doc types if not found
-            alternative_types = ["deed", "deed-of-trust", "unknown"]
-            for alt_type in alternative_types:
-                if alt_type != normalize_doc_type(doc_type):
-                    alt_path = build_gcs_path(book, page, alt_type)
-                    alt_blob = bucket.blob(alt_path)
-                    if alt_blob.exists():
-                        blob = alt_blob
-                        gcs_path = alt_path
-                        break
-            else:
-                # Also try listing files with the book-page pattern
-                prefix = f"documents/{get_folder_prefix(book)}/"
-                filename_pattern = f"{book:04d}-{page:04d}.pdf"
-                blobs = list(bucket.list_blobs(prefix=prefix))
-
-                for b in blobs:
-                    if b.name.endswith(filename_pattern):
-                        blob = b
-                        gcs_path = b.name
-                        break
-                else:
-                    return None
+        blob = find_gcs_blob(bucket, book, page, doc_type)
+        if blob is None:
+            return None
 
         # Download to local file
-        filename = f"{book:04d}-{page:04d}.pdf"
-        local_path = output_dir / filename
+        local_path = output_dir / local_filename(book, page, doc_type)
 
         # Ensure output directory exists
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -346,7 +416,7 @@ def try_gcs_download(
 
 def upload_to_gcs(
     local_path: Path,
-    book: int,
+    book: BookId,
     page: int,
     doc_type: str,
     bucket_name: str = DEFAULT_BUCKET_NAME,
@@ -470,22 +540,21 @@ class MadisonCountyDownloader:
             'Accept-Language': 'en-US,en;q=0.9',
         })
 
-    def download_by_book_page(self, book: int, page: int, doc_type: str = "deed") -> DownloadResult:
+    def download_by_book_page(self, book: BookId, page: int, doc_type: str = DEED) -> DownloadResult:
         """
         Download document by book and page numbers.
         First checks GCS, then falls back to web portal.
 
         Args:
-            book: Book number
+            book: Book number or lettered book
             page: Page number
-            doc_type: Document type code (optional filter)
+            doc_type: Book series / document type ("deed", "deed-of-trust", ...)
 
         Returns:
             DownloadResult with download status and metadata
         """
         # Check if file already exists locally
-        filename = f"{book:04d}-{page:04d}.pdf"
-        file_path = self.download_dir / filename
+        file_path = self.download_dir / local_filename(book, page, doc_type)
 
         if file_path.exists():
             return DownloadResult(
@@ -529,24 +598,27 @@ class MadisonCountyDownloader:
         # Fall back to web portal
         return self._download_from_web(book, page, doc_type)
 
-    def _download_from_web(self, book: int, page: int, doc_type: str = "") -> DownloadResult:
+    def _download_from_web(self, book: BookId, page: int, doc_type: str = DEED) -> DownloadResult:
         """
         Download document from web portal.
 
         Args:
-            book: Book number
+            book: Book number or lettered book
             page: Page number
-            doc_type: Document type code
+            doc_type: Book series / document type
 
         Returns:
             DownloadResult with download status
         """
-        filename = f"{book:04d}-{page:04d}.pdf"
-        file_path = self.download_dir / filename
+        file_path = self.download_dir / local_filename(book, page, doc_type)
 
+        # The portal's doc_type filter takes instrument codes ("01" = DEED,
+        # "02" = DEED OF TRUST, ...) and deed and deed of trust books each hold
+        # many instrument types, so search unfiltered and pick the record from
+        # the requested book series in select_result().
         params = {
             "grantor": "",
-            "doc_type": doc_type,
+            "doc_type": "",
             "book": str(book),
             "bpage": str(page),
             "month": "", "day": "", "year": "",
@@ -569,6 +641,22 @@ class MadisonCountyDownloader:
             content_type = response.headers.get('Content-Type', '').lower()
 
             if 'pdf' in content_type or response.content.startswith(b'%PDF-'):
+                # A bare PDF carries no Type, so it could be the deed at the
+                # same book/page rather than the requested deed of trust
+                if normalize_doc_type(doc_type) == DEED_OF_TRUST:
+                    return DownloadResult(
+                        success=False,
+                        book=book,
+                        page=page,
+                        actual_book=None,
+                        actual_page=None,
+                        local_path=None,
+                        error="Lookup returned a PDF without record details, so it can't be confirmed as a deed of trust",
+                        metadata=None,
+                        is_new_download=False,
+                        source="web"
+                    )
+
                 # Direct PDF download
                 with open(file_path, 'wb') as f:
                     f.write(response.content)
@@ -598,10 +686,11 @@ class MadisonCountyDownloader:
                 )
 
             # HTML response - need to parse and extract PDF link
-            metadata = self._parse_html_response(response.text)
+            results = self._parse_html_results(response.text)
+            metadata = select_result(results, book, page, doc_type)
 
             if metadata and metadata.image_id:
-                local_path = self._download_pdf(metadata)
+                local_path = self._download_pdf(metadata, doc_type)
                 if local_path:
                     # Upload to GCS if enabled
                     if self.upload_to_gcs_flag:
@@ -609,7 +698,7 @@ class MadisonCountyDownloader:
                             local_path=local_path,
                             book=metadata.book,
                             page=metadata.page,
-                            doc_type=metadata.doc_type or doc_type or "deed",
+                            doc_type=doc_type or DEED,
                             bucket_name=self.bucket_name,
                             credentials_path=self.credentials_path,
                             metadata=metadata
@@ -641,20 +730,21 @@ class MadisonCountyDownloader:
                         source="web"
                     )
             else:
-                # Check if no results found
-                if "No results found" in response.text or "no records" in response.text.lower():
-                    return DownloadResult(
-                        success=False,
-                        book=book,
-                        page=page,
-                        actual_book=None,
-                        actual_page=None,
-                        local_path=None,
-                        error="No document found at this book/page",
-                        metadata=None,
-                        is_new_download=False,
-                        source="web"
-                    )
+                if metadata:
+                    error = "Record found but it has no image to download"
+                elif results:
+                    series = "deed of trust" if normalize_doc_type(doc_type) == DEED_OF_TRUST else "deed"
+                    error = (f"Lookup returned {len(results)} record(s) but none is a {series} "
+                             f"at Book {book}, Page {page}")
+                elif "No results found" in response.text or "no records" in response.text.lower():
+                    error = "No document found at this book/page"
+                else:
+                    error = "No PDF link found in response"
+
+                if isinstance(book, str):
+                    error += ("; lettered books may only be on the Historical Books portal "
+                              "(Deed Books > Search by book and page)")
+
                 return DownloadResult(
                     success=False,
                     book=book,
@@ -662,7 +752,7 @@ class MadisonCountyDownloader:
                     actual_book=None,
                     actual_page=None,
                     local_path=None,
-                    error="No PDF link found in response",
+                    error=error,
                     metadata=metadata,
                     is_new_download=False,
                     source="web"
@@ -677,6 +767,19 @@ class MadisonCountyDownloader:
                 actual_page=None,
                 local_path=None,
                 error=f"Request timeout after {self.timeout}s",
+                metadata=None,
+                is_new_download=False,
+                source="web"
+            )
+        except requests.exceptions.ConnectionError:
+            return DownloadResult(
+                success=False,
+                book=book,
+                page=page,
+                actual_book=None,
+                actual_page=None,
+                local_path=None,
+                error=f"Could not connect to {BASE_URL} - the county records site appears to be down. Try again later.",
                 metadata=None,
                 is_new_download=False,
                 source="web"
@@ -708,24 +811,53 @@ class MadisonCountyDownloader:
                 source="web"
             )
 
-    def _parse_html_response(self, html: str) -> Optional[DocumentMetadata]:
+    @staticmethod
+    def _parse_html_results(html: str) -> List[DocumentMetadata]:
         """
-        Parse HTML response to extract document metadata.
+        Parse every record on a lookup results page.
+
+        Each record is an h2 (grantor/grantee), a "Nature:" line, a table of
+        Type/Book/Page/Date cells, then its "Download Image" links.
 
         Args:
             html: HTML response text
 
         Returns:
-            DocumentMetadata if parsed successfully, None otherwise
+            List of DocumentMetadata, in page order
         """
         soup = BeautifulSoup(html, 'html.parser')
+        results = []
 
-        try:
-            # Extract grantor/grantee from h2 tag
-            h2 = soup.find('h2')
+        for table in soup.find_all('table'):
+            doc_type = None
+            book = None
+            page = None
+            date_recorded = None
+            instrument_number = None
+
+            for cell in table.find_all('td'):
+                text = cell.get_text().strip()
+                if text.startswith('Type:'):
+                    doc_type = text[len('Type:'):].strip()
+                elif text.startswith('Book:'):
+                    book = parse_book(text[len('Book:'):])
+                elif text.startswith('Page:'):
+                    page_match = re.search(r'Page:\s*(\d+)', text)
+                    page = int(page_match.group(1)) if page_match else None
+                elif text.startswith('Date'):
+                    date_match = re.search(r'Date\s+Recorded:\s*(.+)', text)
+                    date_recorded = date_match.group(1).strip() if date_match else None
+                elif text.startswith('Instrument'):
+                    inst_match = re.search(r'Instrument.*?:\s*(\d+)', text)
+                    instrument_number = int(inst_match.group(1)) if inst_match else None
+
+            if book is None or page is None:
+                continue
+
+            # Grantor/grantee from the record's h2
             grantor = ""
             grantee = ""
-
+            h2 = table.find_previous('h2')
             if h2:
                 h2_text = h2.get_text()
                 grantor_match = re.search(r'Grantor:\s*(.+?)(?:Grantee:|$)', h2_text, re.DOTALL)
@@ -734,76 +866,45 @@ class MadisonCountyDownloader:
                 grantor = grantor_match.group(1).strip() if grantor_match else ""
                 grantee = grantee_match.group(1).strip() if grantee_match else ""
 
-            # Extract nature (document type)
-            nature_match = re.search(r'Nature:\s*<em>(.+?)</em>', html)
-            doc_nature = nature_match.group(1).strip() if nature_match else ""
+            # Nature (instrument type)
+            doc_nature = ""
+            nature_label = table.find_previous(string=re.compile(r'Nature:'))
+            if nature_label:
+                nature_em = nature_label.find_next('em')
+                doc_nature = nature_em.get_text().strip() if nature_em else ""
 
-            # Extract from table
-            table = soup.find('table')
-            if not table:
-                return None
-
-            # Parse table cells
-            cells = table.find_all('td')
-            cell_texts = [cell.get_text().strip() for cell in cells]
-
-            # Extract values
-            doc_type = None
-            book = None
-            page = None
-            date_recorded = None
-            instrument_number = None
-
-            for cell in cell_texts:
-                if cell.startswith('Type:'):
-                    doc_type_match = re.search(r'Type:\s*(.+)', cell)
-                    doc_type = doc_type_match.group(1).strip() if doc_type_match else None
-                elif cell.startswith('Book:'):
-                    book_match = re.search(r'Book:\s*(\d+)', cell)
-                    book = int(book_match.group(1)) if book_match else None
-                elif cell.startswith('Page:'):
-                    page_match = re.search(r'Page:\s*(\d+)', cell)
-                    page = int(page_match.group(1)) if page_match else None
-                elif cell.startswith('Date'):
-                    date_match = re.search(r'Date\s+Recorded:\s*(.+)', cell)
-                    date_recorded = date_match.group(1).strip() if date_match else None
-                elif cell.startswith('Instrument'):
-                    inst_match = re.search(r'Instrument.*?:\s*(\d+)', cell)
-                    instrument_number = int(inst_match.group(1)) if inst_match else None
-
-            # Extract PDF image_id from download link
-            image_link = soup.find('a', href=re.compile(r'pdf-records\.php\?image='))
+            # First image link before the next record's table
             image_id = None
+            for element in table.next_elements:
+                if element.name == 'table':
+                    break
+                if element.name == 'a':
+                    image_match = re.search(r'pdf-records\.php\?image=(\d+)', element.get('href', ''))
+                    if image_match:
+                        image_id = image_match.group(1)
+                        break
 
-            if image_link:
-                href = image_link.get('href', '')
-                image_match = re.search(r'image=(\d+)', href)
-                image_id = image_match.group(1) if image_match else None
+            results.append(DocumentMetadata(
+                book=book,
+                page=page,
+                grantor=grantor,
+                grantee=grantee,
+                doc_type=doc_type or "",
+                doc_nature=doc_nature,
+                date_recorded=date_recorded or "",
+                image_id=image_id,
+                instrument_number=instrument_number
+            ))
 
-            if book and page:
-                return DocumentMetadata(
-                    book=book,
-                    page=page,
-                    grantor=grantor,
-                    grantee=grantee,
-                    doc_type=doc_type or "",
-                    doc_nature=doc_nature,
-                    date_recorded=date_recorded or "",
-                    image_id=image_id,
-                    instrument_number=instrument_number
-                )
+        return results
 
-            return None
-
-        except Exception:
-            return None
-
-    def _download_pdf(self, metadata: DocumentMetadata) -> Optional[Path]:
+    def _download_pdf(self, metadata: DocumentMetadata, doc_type: str = DEED) -> Optional[Path]:
         """
         Download PDF using image_id from metadata.
 
         Args:
             metadata: Document metadata with image_id
+            doc_type: Book series, used for the local filename
 
         Returns:
             Path to downloaded file, or None if failed
@@ -822,8 +923,7 @@ class MadisonCountyDownloader:
             return None
 
         # Use actual book/page from metadata
-        filename = f"{metadata.book:04d}-{metadata.page:04d}.pdf"
-        file_path = self.download_dir / filename
+        file_path = self.download_dir / local_filename(metadata.book, metadata.page, doc_type)
 
         with open(file_path, 'wb') as f:
             f.write(response.content)
@@ -835,11 +935,40 @@ class MadisonCountyDownloader:
         self.session.close()
 
 
+def select_result(
+    results: List[DocumentMetadata],
+    book: BookId,
+    page: int,
+    doc_type: str = DEED
+) -> Optional[DocumentMetadata]:
+    """
+    Pick the lookup record for the requested book series, book, and page.
+
+    A book/page search can return records from both deed books and deed of
+    trust books (portal Type "T"), so only records from the requested series
+    and book are accepted. An exact page match is preferred.
+
+    Returns:
+        Matching DocumentMetadata, or None
+    """
+    want_deed_of_trust = normalize_doc_type(doc_type) == DEED_OF_TRUST
+    candidates = [
+        r for r in results
+        if r.book == book
+        and (r.doc_type.upper() == DEED_OF_TRUST_TYPE_CODE) == want_deed_of_trust
+    ]
+
+    for r in candidates:
+        if r.page == page:
+            return r
+    return candidates[0] if candidates else None
+
+
 # =============================================================================
 # Document Reference Parsing
 # =============================================================================
 
-def parse_document_reference(ref: str) -> Dict[str, Optional[int]]:
+def parse_document_reference(ref: str) -> Dict[str, Optional[BookId]]:
     """
     Parse a document reference string into book and page.
 
@@ -847,6 +976,7 @@ def parse_document_reference(ref: str) -> Dict[str, Optional[int]]:
         "500/100" -> book 500, page 100
         "500-100" -> book 500, page 100
         "500 100" -> book 500, page 100
+        "CCC/165" -> book "CCC", page 165 (lettered book)
         "500" (single number) -> book 500, page None
 
     Returns:
@@ -859,46 +989,72 @@ def parse_document_reference(ref: str) -> Dict[str, Optional[int]]:
 
     ref = str(ref).strip()
 
+    def parse_pair(book_part: str, page_part: str):
+        book = parse_book(book_part)
+        page_part = page_part.strip()
+        if book is not None and page_part.isdigit():
+            result["book"] = book
+            result["page"] = int(page_part)
+
     # Pattern: slash format (500/100)
     if '/' in ref:
         parts = ref.split('/')
         if len(parts) == 2:
-            try:
-                result["book"] = int(parts[0].strip())
-                result["page"] = int(parts[1].strip())
-            except ValueError:
-                pass
+            parse_pair(parts[0], parts[1])
         return result
 
     # Pattern: hyphen format (500-100)
     if '-' in ref:
         parts = ref.split('-')
         if len(parts) == 2:
-            try:
-                result["book"] = int(parts[0].strip())
-                result["page"] = int(parts[1].strip())
-            except ValueError:
-                pass
+            parse_pair(parts[0], parts[1])
         return result
 
     # Pattern: space format (500 100)
     if ' ' in ref:
         parts = ref.split()
         if len(parts) >= 2:
-            try:
-                result["book"] = int(parts[0].strip())
-                result["page"] = int(parts[1].strip())
-            except ValueError:
-                pass
+            parse_pair(parts[0], parts[1])
         return result
 
     # Single number (just book)
-    try:
-        result["book"] = int(ref)
-    except ValueError:
-        pass
+    result["book"] = parse_book(ref)
 
     return result
+
+
+def parse_reference_line(line: str) -> Optional[Dict]:
+    """
+    Parse one document reference with an optional book series label.
+
+    Supported formats:
+        "500/100", "500-100", "CCC/165"  -> deed book
+        "DT 502/308"                     -> deed of trust book (label first)
+        "502/308 deed-of-trust"          -> label last
+        "501-50 plat"                    -> other document type
+
+    Books < 238 and lettered books are deed books unless labeled as a
+    deed of trust.
+
+    Returns:
+        Dictionary with keys: book, page, doc_type; None if no reference found
+    """
+    tokens = line.split()
+    for i, token in enumerate(tokens):
+        parsed = parse_document_reference(token)
+        if parsed["book"] is not None and parsed["page"] is not None:
+            label = " ".join(tokens[:i] + tokens[i + 1:]).lower()
+            break
+    else:
+        return None
+
+    book = parsed["book"]
+    doc_type = DOC_TYPE_ALIASES.get(label, normalize_doc_type(label)) if label else DEED
+
+    if doc_type != DEED_OF_TRUST and (isinstance(book, str) or book < 238):
+        doc_type = DEED
+
+    return {"book": book, "page": parsed["page"], "doc_type": doc_type}
 
 
 def sanitize_filename(filename: str) -> str:
@@ -963,19 +1119,23 @@ def process_excel_file(excel_path: str) -> List[Dict[str, Optional[int]]]:
         # Try to parse
         book = None
         page = None
+        doc_type = DEED
 
         # Check if Column A contains book/page combined format
         first_val = str(row[0]).strip()
         if '/' in first_val or '-' in first_val or ' ' in first_val:
-            parsed = parse_document_reference(first_val)
+            parsed = parse_reference_line(first_val) or parse_document_reference(first_val)
             book = parsed["book"]
             page = parsed["page"]
+            doc_type = parsed.get("doc_type", DEED)
         else:
             # Assume Column A is book, Column B is page
             try:
-                book = int(float(str(row[0]).strip()))
+                book = int(float(first_val))
             except (ValueError, TypeError):
-                continue
+                book = parse_book(first_val)
+                if book is None:
+                    continue
 
             if len(row) > 1 and row[1] is not None:
                 try:
@@ -987,6 +1147,7 @@ def process_excel_file(excel_path: str) -> List[Dict[str, Optional[int]]]:
             documents.append({
                 "book": book,
                 "page": page,
+                "doc_type": doc_type,
                 "row": row_num,
                 "original_ref": f"{book}/{page}"
             })
@@ -1002,18 +1163,22 @@ def process_txt_file(txt_path: str) -> List[Dict[str, Optional[int]]]:
     Expected format (one per line):
         500/100 deed book
         501-50 plat
+        DT 502/308  (deed of trust book)
+        CCC/165     (lettered deed book)
         238/15
-        100/50  (book < 238 is always deed book)
+        100/50  (book < 238 is a deed book unless marked DT)
 
-    If no book type is specified, defaults to "deed book".
-    Books numbered less than 238 are always treated as deed books.
+    If no book type is specified, defaults to "deed".
+    Books numbered less than 238 and lettered books are treated as deed
+    books unless marked as a deed of trust.
 
     Returns:
         List of dictionaries with book, page, and doc_type
     """
     documents = []
 
-    with open(txt_path, 'r', encoding='utf-8') as f:
+    # utf-8-sig drops the BOM Windows Notepad may add
+    with open(txt_path, 'r', encoding='utf-8-sig') as f:
         for line_num, line in enumerate(f, start=1):
             line = line.strip()
 
@@ -1021,46 +1186,16 @@ def process_txt_file(txt_path: str) -> List[Dict[str, Optional[int]]]:
             if not line or line.startswith('#'):
                 continue
 
-            # Skip header-like lines
-            line_lower = line.lower()
-            if any(keyword in line_lower for keyword in ['book', 'page', 'document', 'reference']):
-                print(f"  Skipping header line: {line}")
-                continue
+            parsed = parse_reference_line(line)
 
-            # Parse book/page and optional book type
-            # Format: [book]/[page] [book_type] or [book]-[page] [book_type]
-            book = None
-            page = None
-            book_type = "deed"  # Default
-
-            # Split on whitespace to separate book/page from book type
-            parts = line.split()
-            if not parts:
-                continue
-
-            book_page_part = parts[0]
-
-            # Extract book type if provided (everything after the book/page)
-            if len(parts) > 1:
-                book_type = " ".join(parts[1:])
-
-            # Parse book/page using existing function
-            parsed = parse_document_reference(book_page_part)
-            book = parsed["book"]
-            page = parsed["page"]
-
-            # Books < 238 are always deed book
-            if book is not None and book < 238:
-                book_type = "deed"
-
-            if book is not None and page is not None:
+            if parsed:
                 documents.append({
-                    "book": book,
-                    "page": page,
-                    "doc_type": book_type,
+                    **parsed,
                     "row": line_num,
                     "original_ref": line
                 })
+            elif any(keyword in line.lower() for keyword in ['book', 'page', 'document', 'reference']):
+                print(f"  Skipping header line: {line}")
             else:
                 print(f"  Warning: Could not parse line {line_num}: {line}")
 
@@ -1204,13 +1339,15 @@ def run_batch_download(
 
         try:
             for idx, doc in enumerate(documents, start=1):
-                print(f"\n[{idx}/{len(documents)}] Downloading Book {doc['book']}, Page {doc['page']}...")
-
                 doc_type = doc.get("doc_type", "deed")
+                label = format_reference(doc["book"], doc["page"], doc_type)
+                print(f"\n[{idx}/{len(documents)}] Downloading {label}...")
+
                 result = downloader.download_by_book_page(doc["book"], doc["page"], doc_type)
 
                 download_results.append({
                     "ref": doc["original_ref"],
+                    "label": label,
                     "book": doc["book"],
                     "page": doc["page"],
                     "success": result.success,
@@ -1263,12 +1400,14 @@ def run_batch_download(
 
             for idx, future in enumerate(as_completed(futures), start=1):
                 doc = futures[future]
+                label = format_reference(doc["book"], doc["page"], doc.get("doc_type", "deed"))
 
                 try:
                     doc, result = future.result()
 
                     download_results.append({
                         "ref": doc["original_ref"],
+                        "label": label,
                         "book": doc["book"],
                         "page": doc["page"],
                         "success": result.success,
@@ -1295,11 +1434,12 @@ def run_batch_download(
                         status = f"Failed: {result.error}"
                         failed += 1
 
-                    print(f"[{idx}/{len(documents)}] Book {doc['book']}, Page {doc['page']}: {status}")
+                    print(f"[{idx}/{len(documents)}] {label}: {status}")
 
                 except Exception as e:
                     download_results.append({
                         "ref": doc["original_ref"],
+                        "label": label,
                         "book": doc["book"],
                         "page": doc["page"],
                         "success": False,
@@ -1308,7 +1448,7 @@ def run_batch_download(
                         "filepath": None
                     })
                     failed += 1
-                    print(f"[{idx}/{len(documents)}] Book {doc['book']}, Page {doc['page']}: Error - {e}")
+                    print(f"[{idx}/{len(documents)}] {label}: Error - {e}")
 
     elapsed = time.time() - start_time
 
@@ -1398,7 +1538,7 @@ def generate_summary_report(
             else:
                 status = "[WEB]"
             filename = os.path.basename(r["filepath"]) if r["filepath"] else "N/A"
-            lines.append(f"  {status} Book {r['book']}, Page {r['page']} -> {filename}")
+            lines.append(f"  {status} {r['label']} -> {filename}")
         lines.append("")
 
     # List failed downloads
@@ -1408,7 +1548,7 @@ def generate_summary_report(
         lines.append("FAILED DOWNLOADS")
         lines.append("-" * 70)
         for r in failed_results:
-            lines.append(f"  [FAILED] Book {r['book']}, Page {r['page']}")
+            lines.append(f"  [FAILED] {r['label']}")
             lines.append(f"           Reason: {r['message']}")
         lines.append("")
 
@@ -1570,7 +1710,10 @@ Excel Format:
 
 Text File Format:
   [book]/[page] [book_type] - e.g., "500/100 deed book", "501-50 plat"
-  Book type defaults to "deed". Books < 238 are always "deed".
+  DT [book]/[page]          - deed of trust book, e.g., "DT 502/308"
+  Lettered books            - e.g., "CCC/165"
+  Book type defaults to "deed". Books < 238 and lettered books are "deed"
+  unless marked DT.
         """
     )
 

@@ -117,12 +117,16 @@ python madison_doc_puller.py
 # One document per line: book/page [optional doc_type]
 500/100 deed
 501-50 deed-of-trust
+DT 502/308
+CCC/165
 238/15
 100/50
 ```
 
 - Default doc type is "deed"
-- Books < 238 are always treated as "deed"
+- `DT` (or `DOT`) before the reference marks a deed of trust book. Deed of trust books are numbered separately from deed books, so `DT 151/206` is never filled with Deed Book 151, Page 206; deeds of trust are saved locally as `DT-0502-0308.pdf`
+- Lettered books (A-ZZZ) are supported, e.g. `CCC/165` -> `CCC-0165.pdf`
+- Books < 238 and lettered books are treated as "deed" unless marked `DT`
 
 ## Command Line Options
 
