@@ -160,6 +160,15 @@ DOC_TYPE_ALIASES = {
     "dot": DEED_OF_TRUST,
 }
 
+# Court records are filed by case number, not book/page, so a line labeled
+# with one of these (e.g., "Cause 1994-175") is not a land record reference
+COURT_RECORD_KINDS = {
+    "cause": "chancery cause",
+    "case": "chancery case",
+    "chancery": "chancery case",
+    "will": "will",
+}
+
 # Lookup portal "Type" code for records in deed of trust books
 DEED_OF_TRUST_TYPE_CODE = "T"
 
@@ -1023,6 +1032,28 @@ def parse_document_reference(ref: str) -> Dict[str, Optional[BookId]]:
     return result
 
 
+def court_record_kind(line: str) -> Optional[str]:
+    """
+    Identify a line that refers to a court record rather than a land record.
+
+    The label is the first word of the line, or the first word after the
+    reference when the line starts with it ("1994-175 cause").
+
+    Returns:
+        The court record kind (e.g., "chancery cause"), or None
+    """
+    tokens = line.lower().split()
+    for i, token in enumerate(tokens):
+        parsed = parse_document_reference(token)
+        if parsed["book"] is not None and parsed["page"] is not None:
+            tokens = tokens[:i] + tokens[i + 1:]
+            break
+
+    if not tokens:
+        return None
+    return COURT_RECORD_KINDS.get(tokens[0].strip(":,.-"))
+
+
 def parse_reference_line(line: str) -> Optional[Dict]:
     """
     Parse one document reference with an optional book series label.
@@ -1034,11 +1065,14 @@ def parse_reference_line(line: str) -> Optional[Dict]:
         "501-50 plat"                    -> other document type
 
     Books < 238 and lettered books are deed books unless labeled as a
-    deed of trust.
+    deed of trust. Court records ("Cause 1994-175") are not references.
 
     Returns:
         Dictionary with keys: book, page, doc_type; None if no reference found
     """
+    if court_record_kind(line):
+        return None
+
     tokens = line.split()
     for i, token in enumerate(tokens):
         parsed = parse_document_reference(token)
@@ -1123,6 +1157,11 @@ def process_excel_file(excel_path: str) -> List[Dict[str, Optional[int]]]:
 
         # Check if Column A contains book/page combined format
         first_val = str(row[0]).strip()
+        kind = court_record_kind(first_val)
+        if kind:
+            print(f"  Skipping row {row_num} ({kind} - not in the land records): {first_val}")
+            continue
+
         if '/' in first_val or '-' in first_val or ' ' in first_val:
             parsed = parse_reference_line(first_val) or parse_document_reference(first_val)
             book = parsed["book"]
@@ -1184,6 +1223,11 @@ def process_txt_file(txt_path: str) -> List[Dict[str, Optional[int]]]:
 
             # Skip empty lines and comments
             if not line or line.startswith('#'):
+                continue
+
+            kind = court_record_kind(line)
+            if kind:
+                print(f"  Skipping line {line_num} ({kind} - not in the land records): {line}")
                 continue
 
             parsed = parse_reference_line(line)

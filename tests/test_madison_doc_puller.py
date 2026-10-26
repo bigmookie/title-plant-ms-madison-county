@@ -58,6 +58,47 @@ def test_parse_reference_line_rejects_non_references(line):
     assert mdp.parse_reference_line(line) is None
 
 
+@pytest.mark.parametrize(
+    "line, kind",
+    [
+        ("Cause 1994-175 - Ollie Wahl Hobson", "chancery cause"),
+        ("cause: 1994-175", "chancery cause"),
+        ("1994-175 cause", "chancery cause"),
+        ("Case 88-412", "chancery case"),
+        ("Chancery 1994-175", "chancery case"),
+        ("Will of James Glen Steinwinder", "will"),
+        ("Will 5/100", "will"),
+    ],
+)
+def test_court_records_are_not_land_records(line, kind):
+    # Court case numbers look like book-page references but are not
+    assert mdp.court_record_kind(line) == kind
+    assert mdp.parse_reference_line(line) is None
+
+
+@pytest.mark.parametrize(
+    "line", ["3799/446", "DT 502/308", "501-50 plat", "500/100 - Will Smith"]
+)
+def test_land_records_are_not_court_records(line):
+    assert mdp.court_record_kind(line) is None
+
+
+def test_process_txt_file_skips_court_records(tmp_path, capsys):
+    txt = tmp_path / "docs.txt"
+    txt.write_text(
+        "3428/182\nCause 1994-175 - Ollie Wahl Hobson\nWill of James Glen Steinwinder\n",
+        encoding="utf-8",
+    )
+
+    docs = mdp.process_txt_file(str(txt))
+
+    assert [(d["book"], d["page"]) for d in docs] == [(3428, 182)]
+    out = capsys.readouterr().out
+    assert "Skipping line 2 (chancery cause" in out
+    assert "Skipping line 3 (will" in out
+    assert "Could not parse" not in out
+
+
 def test_process_txt_file_parses_every_reference(tmp_path, capsys):
     lines = [
         "Book/Page",
